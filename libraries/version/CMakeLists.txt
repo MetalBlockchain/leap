@@ -23,18 +23,18 @@ target_include_directories(
 
 # Create a custom target to update the version metadata upon every build.
 find_package(Git)
-if(EXISTS ${CMAKE_SOURCE_DIR}/.git AND ${GIT_FOUND})
+if(EXISTS ${leap_SOURCE_DIR}/.git AND ${GIT_FOUND})
    add_custom_target(
       evaluate_every_build ALL
       COMMAND ${CMAKE_COMMAND} -DGIT_EXEC=${GIT_EXECUTABLE}
                                -DCUR_BIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
                                -DCUR_SRC_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-                               -DSRC_DIR=${CMAKE_SOURCE_DIR}
+                               -DSRC_DIR=${leap_SOURCE_DIR}
                                -DV_MAJOR=${VERSION_MAJOR}
                                -DV_MINOR=${VERSION_MINOR}
                                -DV_PATCH=${VERSION_PATCH}
                                -DV_SUFFIX=${VERSION_SUFFIX}
-                               -P ${CMAKE_SOURCE_DIR}/CMakeModules/VersionUtils.cmake
+                               -P ${leap_SOURCE_DIR}/CMakeModules/VersionUtils.cmake
       BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/src/version_impl.cpp
       COMMENT "Updating version metadata..." VERBATIM )
                              
