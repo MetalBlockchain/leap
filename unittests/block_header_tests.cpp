@@ -55,7 +55,7 @@ BOOST_AUTO_TEST_CASE(instant_finality_extension_uniqueness_test)
    new_finalizer_policy.threshold = 100;
    new_finalizer_policy.finalizers = finalizers;
 
-   proposer_policy_ptr new_proposer_policy = std::make_shared<proposer_policy>(1, block_timestamp_type{200}, producer_authority_schedule{} );
+   proposer_policy_ptr new_proposer_policy = std::make_shared<proposer_policy>(proposer_policy{1,  block_timestamp_type{200}, producer_authority_schedule{}} );
 
    emplace_extension(
       header.header_extensions,
@@ -79,7 +79,7 @@ BOOST_AUTO_TEST_CASE(instant_finality_extension_with_values_test)
    new_finalizer_policy.threshold = 100;
    new_finalizer_policy.finalizers = finalizers;
 
-   proposer_policy_ptr new_proposer_policy = std::make_shared<proposer_policy>(1, block_timestamp_type{200}, producer_authority_schedule{} );
+   proposer_policy_ptr new_proposer_policy = std::make_shared<proposer_policy>(proposer_policy{1, block_timestamp_type{200}, producer_authority_schedule{}} );
 
    emplace_extension(
       header.header_extensions,

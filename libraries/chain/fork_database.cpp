@@ -71,15 +71,15 @@ namespace eosio::chain {
    template<class BSP>  // either [block_state_legacy_ptr, block_state_ptr], same with block_header_state_ptr
    struct fork_database_impl {
       using bsp_t              = BSP;
-      using bs_t               = bsp_t::element_type;
-      using bs_accessor_t      = bs_t::fork_db_block_state_accessor_t;
-      using bhsp_t             = bs_t::bhsp_t;
-      using bhs_t              = bhsp_t::element_type;
+      using bs_t               = typename bsp_t::element_type;
+      using bs_accessor_t      = typename bs_t::fork_db_block_state_accessor_t;
+      using bhsp_t             = typename bs_t::bhsp_t;
+      using bhs_t              = typename bhsp_t::element_type;
 
       using fork_db_t          = fork_database_t<BSP>;
-      using branch_t           = fork_db_t::branch_t;
-      using full_branch_t      = fork_db_t::full_branch_t;
-      using branch_pair_t      = fork_db_t::branch_pair_t;
+      using branch_t           = typename fork_db_t::branch_t;
+      using full_branch_t      = typename fork_db_t::full_branch_t;
+      using branch_pair_t      = typename fork_db_t::branch_pair_t;
 
       using by_best_branch_legacy_t =
             ordered_unique<tag<by_best_branch>,
@@ -422,14 +422,14 @@ namespace eosio::chain {
    }
 
    template <class BSP>
-   fork_database_t<BSP>::branch_t
+   typename fork_database_t<BSP>::branch_t
    fork_database_t<BSP>::fetch_branch(const block_id_type& h, uint32_t trim_after_block_num) const {
       std::lock_guard g(my->mtx);
       return my->fetch_branch_impl(h, trim_after_block_num);
    }
 
    template <class BSP>
-   fork_database_t<BSP>::branch_t
+   typename fork_database_t<BSP>::branch_t
    fork_database_impl<BSP>::fetch_branch_impl(const block_id_type& h, uint32_t trim_after_block_num) const {
       branch_t result;
       result.reserve(index.size());
@@ -462,14 +462,14 @@ namespace eosio::chain {
    }
 
    template <class BSP>
-   fork_database_t<BSP>::full_branch_t
+   typename fork_database_t<BSP>::full_branch_t
    fork_database_t<BSP>::fetch_full_branch(const block_id_type& h) const {
       std::lock_guard g(my->mtx);
       return my->fetch_full_branch_impl(h);
    }
 
    template <class BSP>
-   fork_database_t<BSP>::full_branch_t
+   typename fork_database_t<BSP>::full_branch_t
    fork_database_impl<BSP>::fetch_full_branch_impl(const block_id_type& h) const {
       full_branch_t result;
       result.reserve(index.size());
@@ -516,14 +516,14 @@ namespace eosio::chain {
     *  end with a common ancestor (same prior block)
     */
    template <class BSP>
-   fork_database_t<BSP>::branch_pair_t
+   typename fork_database_t<BSP>::branch_pair_t
    fork_database_t<BSP>::fetch_branch_from(const block_id_type& first, const block_id_type& second) const {
       std::lock_guard g(my->mtx);
       return my->fetch_branch_from_impl(first, second);
    }
 
    template <class BSP>
-   fork_database_t<BSP>::branch_pair_t
+   typename fork_database_t<BSP>::branch_pair_t
    fork_database_impl<BSP>::fetch_branch_from_impl(const block_id_type& first, const block_id_type& second) const {
       branch_pair_t result;
       auto first_branch = (first == root->id()) ? root : get_block_impl(first);

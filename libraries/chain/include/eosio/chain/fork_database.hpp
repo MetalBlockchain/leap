@@ -37,9 +37,9 @@ namespace eosio::chain {
    class fork_database_t {
    public:
       using bsp_t            = BSP;
-      using bs_t             = bsp_t::element_type;
-      using bhsp_t           = bs_t::bhsp_t;
-      using bhs_t            = bhsp_t::element_type;
+      using bs_t             = typename bsp_t::element_type;
+      using bhsp_t           = typename bs_t::bhsp_t;
+      using bhs_t            = typename bhsp_t::element_type;
       using branch_t         = std::vector<bsp_t>;
       using full_branch_t    = std::vector<bhsp_t>;
       using branch_pair_t    = pair<branch_t, branch_t>;

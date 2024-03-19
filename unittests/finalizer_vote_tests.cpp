@@ -114,7 +114,7 @@ struct simulator_t {
 
    simulator_t() :
       keys("alice"_n),
-      my_finalizer(keys.privkey) {
+      my_finalizer{keys.privkey, {}} {
 
       finalizer_policy fin_policy;
       fin_policy.threshold = 0;
@@ -125,7 +125,7 @@ struct simulator_t {
       bsp_vec.push_back(genesis);
       forkdb.reset_root(genesis);
 
-      block_ref genesis_ref(genesis->id(), genesis->timestamp());
+      block_ref genesis_ref{genesis->id(), genesis->timestamp()};
       my_finalizer.fsi = fsi_t{block_timestamp_type(0), genesis_ref, genesis_ref};
    }
 

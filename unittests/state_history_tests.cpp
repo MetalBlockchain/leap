@@ -632,7 +632,9 @@ struct state_history_tester : state_history_tester_logs, tester {
        });
 
       control.accepted_block().connect([&](block_signal_params t) {
-         const auto& [ block, id ] = t;
+         const auto& block = std::get<0>(t);
+         const auto& id = std::get<1>(t);
+
          eosio::state_history_log_header header{.magic        = eosio::ship_magic(eosio::ship_current_version, 0),
                                                 .block_id     = id,
                                                 .payload_size = 0};

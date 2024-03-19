@@ -386,7 +386,7 @@ struct trace_api_plugin_impl {
 
       irreversible_block_connection.emplace(
          chain.irreversible_block().connect([this](const chain::block_signal_params& t) {
-            const auto& [ block, id ] = t;
+            const auto& block = std::get<0>(t);
             emit_killer([&](){
                extraction->signal_irreversible_block(block->block_num());
             });

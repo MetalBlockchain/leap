@@ -119,7 +119,7 @@ BOOST_AUTO_TEST_CASE(snapshot_scheduler_test) {
             BOOST_CHECK(!"app threw exception see logged error");
          });
 
-         auto [prod_plug, chain_plug] = plugin_fut.get();
+         auto prod_plug = std::get<0>(plugin_fut.get());
 
          snapshot_request_params sri1 = {.block_spacing = 8, .start_block_num = 1, .end_block_num = 300000, .snapshot_description = "Example of recurring snapshot 1"};
          snapshot_request_params sri2 = {.block_spacing = 5000, .start_block_num = 100000, .end_block_num = 300000, .snapshot_description = "Example of recurring snapshot 2 that wont happen in test"};

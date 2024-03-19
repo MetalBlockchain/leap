@@ -38,7 +38,7 @@ BOOST_AUTO_TEST_CASE(aggregate_vote_test) try {
 
    {  // all finalizers can aggregate votes
       block_state_ptr bsp = std::make_shared<block_state>();
-      bsp->active_finalizer_policy = std::make_shared<finalizer_policy>( 10, 15, finalizers );
+      bsp->active_finalizer_policy = std::make_shared<finalizer_policy>( finalizer_policy{10, 15, finalizers} );
       bsp->strong_digest = strong_digest;
       bsp->weak_digest = weak_digest;
       bsp->pending_qc = pending_quorum_certificate{ num_finalizers, 1, bsp->active_finalizer_policy->max_weak_sum_before_weak_final() };
@@ -53,7 +53,7 @@ BOOST_AUTO_TEST_CASE(aggregate_vote_test) try {
 
    {  // public and private keys mismatched
       block_state_ptr bsp = std::make_shared<block_state>();
-      bsp->active_finalizer_policy = std::make_shared<finalizer_policy>( 10, 15, finalizers );
+      bsp->active_finalizer_policy = std::make_shared<finalizer_policy>( finalizer_policy{10, 15, finalizers} );
       bsp->strong_digest = strong_digest;
       bsp->pending_qc = pending_quorum_certificate{ num_finalizers, 1, bsp->active_finalizer_policy->max_weak_sum_before_weak_final() };
 
@@ -63,7 +63,7 @@ BOOST_AUTO_TEST_CASE(aggregate_vote_test) try {
 
    {  // duplicate votes 
       block_state_ptr bsp = std::make_shared<block_state>();
-      bsp->active_finalizer_policy = std::make_shared<finalizer_policy>( 10, 15, finalizers );
+      bsp->active_finalizer_policy = std::make_shared<finalizer_policy>( finalizer_policy{10, 15, finalizers} );
       bsp->strong_digest = strong_digest;
       bsp->pending_qc = pending_quorum_certificate{ num_finalizers, 1, bsp->active_finalizer_policy->max_weak_sum_before_weak_final() };
 
@@ -74,7 +74,7 @@ BOOST_AUTO_TEST_CASE(aggregate_vote_test) try {
 
    {  // public key does not exit in finalizer set
       block_state_ptr bsp = std::make_shared<block_state>();
-      bsp->active_finalizer_policy = std::make_shared<finalizer_policy>( 10, 15, finalizers );
+      bsp->active_finalizer_policy = std::make_shared<finalizer_policy>( finalizer_policy{10, 15, finalizers} );
       bsp->strong_digest = strong_digest;
       bsp->pending_qc = pending_quorum_certificate{ num_finalizers, 1, bsp->active_finalizer_policy->max_weak_sum_before_weak_final() };
 
@@ -116,7 +116,7 @@ void do_quorum_test(const std::vector<uint64_t>& weights,
 
    block_state_ptr bsp = std::make_shared<block_state>();
    constexpr uint32_t generation = 1;
-   bsp->active_finalizer_policy = std::make_shared<finalizer_policy>( generation, threshold, finalizers );
+   bsp->active_finalizer_policy = std::make_shared<finalizer_policy>( finalizer_policy{generation, threshold, finalizers} );
    bsp->strong_digest = strong_digest;
    bsp->weak_digest = weak_digest;
    bsp->pending_qc = pending_quorum_certificate{ num_finalizers, threshold, bsp->active_finalizer_policy->max_weak_sum_before_weak_final() };
@@ -208,7 +208,7 @@ BOOST_AUTO_TEST_CASE(verify_qc_test) try {
    block_state_ptr bsp = std::make_shared<block_state>();
    constexpr uint32_t generation = 1;
    constexpr uint64_t threshold = 4; // 2/3 of total weights of 6
-   bsp->active_finalizer_policy = std::make_shared<finalizer_policy>( generation, threshold, finalizers );
+   bsp->active_finalizer_policy = std::make_shared<finalizer_policy>( finalizer_policy{generation, threshold, finalizers} );
    bsp->strong_digest = strong_digest;
    bsp->weak_digest = weak_digest;
 

@@ -40,8 +40,9 @@ namespace fc::raw {
 
 template <class V>
 void check_pack_unpack(V &v, V &v2) {
-   v.emplace_back(shared_string("Moby Dick"),               shared_string_vector{ "Herman Melville" });
-   v.emplace_back(shared_string("All the President's Men"), shared_string_vector{ "Carl Bernstein", "Bob Woodward" });
+   using element_type = typename V::value_type;
+   v.push_back(element_type{shared_string("Moby Dick"),               shared_string_vector{ "Herman Melville" }});
+   v.push_back(element_type{shared_string("All the President's Men"), shared_string_vector{ "Carl Bernstein", "Bob Woodward" }});
    
    BOOST_REQUIRE(v[1].title == "All the President's Men");
    BOOST_REQUIRE(v[1].authors[1] == "Bob Woodward");
