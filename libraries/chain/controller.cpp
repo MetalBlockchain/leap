@@ -4685,6 +4685,10 @@ uint32_t controller::if_irreversible_block_num() const {
    return block_header::num_from_id(my->if_irreversible_block_id);
 }
 
+void controller::log_irreversible() {
+   my->log_irreversible();
+}
+
 uint32_t controller::last_irreversible_block_num() const {
    return my->fork_db_root_block_num();
 }
