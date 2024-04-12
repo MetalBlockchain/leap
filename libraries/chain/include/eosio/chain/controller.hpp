@@ -177,7 +177,7 @@ namespace eosio::chain {
 
          void assemble_and_complete_block( block_report& br, const signer_callback_type& signer_callback );
          void sign_block( const signer_callback_type& signer_callback );
-         void commit_block();
+         void commit_block(block_report& br);
          void maybe_switch_forks(const forked_callback_t& cb, const trx_meta_cache_lookup& trx_lookup);
 
          // thread-safe
@@ -240,6 +240,9 @@ namespace eosio::chain {
          const signed_block_ptr& head_block()const;
          // returns nullptr after instant finality enabled
          block_state_legacy_ptr head_block_state_legacy()const;
+         // returns finality_data associated with chain head for SHiP when in Savanna,
+         // std::nullopt in Legacy
+         std::optional<finality_data_t> head_finality_data() const;
 
          uint32_t             fork_db_head_block_num()const;
          block_id_type        fork_db_head_block_id()const;
@@ -275,7 +278,8 @@ namespace eosio::chain {
          // thread-safe
          signed_block_ptr fetch_block_by_id( const block_id_type& id )const;
          // thread-safe
-         bool block_exists( const block_id_type& id)const;
+         bool block_exists(const block_id_type& id) const;
+         bool validated_block_exists(const block_id_type& id) const;
          // thread-safe
          std::optional<signed_block_header> fetch_block_header_by_number( uint32_t block_num )const;
          // thread-safe
@@ -322,9 +326,11 @@ namespace eosio::chain {
          int64_t set_proposed_producers( vector<producer_authority> producers );
 
          // called by host function set_finalizers
-         void set_proposed_finalizers( const finalizer_policy& fin_set );
+         void set_proposed_finalizers( finalizer_policy&& fin_pol );
          // called from net threads
          vote_status process_vote_message( const vote_message& msg );
+         // thread safe, for testing
+         bool node_has_voted_if_finalizer(const block_id_type& id) const;
 
          bool light_validation_allowed() const;
          bool skip_auth_check()const;
@@ -369,6 +375,8 @@ namespace eosio::chain {
          signal<void(const block_signal_params&)>&  accepted_block();
          signal<void(const block_signal_params&)>&  irreversible_block();
          signal<void(std::tuple<const transaction_trace_ptr&, const packed_transaction_ptr&>)>& applied_transaction();
+
+         // Unlike other signals, voted_block can be signaled from other threads than the main thread.
          signal<void(const vote_message&)>&         voted_block();
 
          const apply_handler* find_apply_handler( account_name contract, scope_name scope, action_name act )const;

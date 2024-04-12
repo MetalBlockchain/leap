@@ -33,16 +33,6 @@
 #include <new>
 #include <regex>
 
-// should be defined for c++17, but clang++16 still has not implemented it
-#ifdef __cpp_lib_hardware_interference_size
-   using std::hardware_constructive_interference_size;
-   using std::hardware_destructive_interference_size;
-#else
-   // 64 bytes on x86-64 │ L1_CACHE_BYTES │ L1_CACHE_SHIFT │ __cacheline_aligned │ ...
-   [[maybe_unused]] constexpr std::size_t hardware_constructive_interference_size = 64;
-   [[maybe_unused]] constexpr std::size_t hardware_destructive_interference_size = 64;
-#endif
-
 using namespace eosio::chain::plugin_interface;
 
 using namespace std::chrono_literals;
@@ -723,10 +713,17 @@ namespace eosio {
          return _out_queue.empty();
       }
 
-      bool ready_to_send() const {
-         fc::lock_guard g( _mtx );
+      // called from connection strand
+      bool ready_to_send(uint32_t connection_id) const {
+         fc::unique_lock g( _mtx );
          // if out_queue is not empty then async_write is in progress
-         return ((!_sync_write_queue.empty() || !_write_queue.empty()) && _out_queue.empty());
+         bool async_write_in_progress = !_out_queue.empty();
+         bool ready = ((!_sync_write_queue.empty() || !_write_queue.empty()) && !async_write_in_progress);
+         g.unlock();
+         if (async_write_in_progress) {
+            fc_dlog(logger, "Connection - ${id} not ready to send data, async write in progress", ("id", connection_id));
+         }
+         return ready;
       }
 
       // @param callback must not callback into queued_buffer
@@ -1287,7 +1284,7 @@ namespace eosio {
    {
       my_impl->mark_bp_connection(this);
       update_endpoints();
-      fc_ilog( logger, "created connection ${c} to ${n}", ("c", connection_id)("n", endpoint) );
+      fc_ilog( logger, "created connection - ${c} to ${n}", ("c", connection_id)("n", endpoint) );
    }
 
    connection::connection(tcp::socket&& s, const string& listen_address, size_t block_sync_rate_limit)
@@ -1302,7 +1299,8 @@ namespace eosio {
         last_handshake_sent()
    {
       update_endpoints();
-      fc_dlog( logger, "new connection object created for peer ${address}:${port} from listener ${addr}", ("address", log_remote_endpoint_ip)("port", log_remote_endpoint_port)("addr", listen_address) );
+      fc_dlog( logger, "new connection - ${c} object created for peer ${address}:${port} from listener ${addr}",
+               ("c", connection_id)("address", log_remote_endpoint_ip)("port", log_remote_endpoint_port)("addr", listen_address) );
    }
 
    void connection::update_endpoints(const tcp::endpoint& endpoint) {
@@ -1335,16 +1333,16 @@ namespace eosio {
    void connection::set_connection_type( const std::string& peer_add ) {      
       auto [host, port, type] = split_host_port_type(peer_add);
       if( type.empty() ) {
-         fc_dlog( logger, "Setting connection ${c} type for: ${peer} to both transactions and blocks", ("c", connection_id)("peer", peer_add) );
+         fc_dlog( logger, "Setting connection - ${c} type for: ${peer} to both transactions and blocks", ("c", connection_id)("peer", peer_add) );
          connection_type = both;
       } else if( type == "trx" ) {
-         fc_dlog( logger, "Setting connection ${c} type for: ${peer} to transactions only", ("c", connection_id)("peer", peer_add) );
+         fc_dlog( logger, "Setting connection - ${c} type for: ${peer} to transactions only", ("c", connection_id)("peer", peer_add) );
          connection_type = transactions_only;
       } else if( type == "blk" ) {
-         fc_dlog( logger, "Setting connection ${c} type for: ${peer} to blocks only", ("c", connection_id)("peer", peer_add) );
+         fc_dlog( logger, "Setting connection - ${c} type for: ${peer} to blocks only", ("c", connection_id)("peer", peer_add) );
          connection_type = blocks_only;
       } else {
-         fc_wlog( logger, "Unknown connection ${c} type: ${t}, for ${peer}", ("c", connection_id)("t", type)("peer", peer_add) );
+         fc_wlog( logger, "Unknown connection - ${c} type: ${t}, for ${peer}", ("c", connection_id)("t", type)("peer", peer_add) );
       }
    }
 
@@ -1676,7 +1674,7 @@ namespace eosio {
 
    // called from connection strand
    void connection::do_queue_write() {
-      if( !buffer_queue.ready_to_send() || closed() )
+      if( !buffer_queue.ready_to_send(connection_id) || closed() )
          return;
       connection_ptr c(shared_from_this());
 
@@ -1711,6 +1709,7 @@ namespace eosio {
                   c->close();
                   return;
                }
+               peer_dlog(c, "async write complete");
                c->bytes_sent += w;
                c->last_bytes_sent = c->get_time();
 
@@ -2531,7 +2530,11 @@ namespace eosio {
                if (sync_last_requested_num == 0) { // block was rejected
                   sync_next_expected_num = my_impl->get_chain_lib_num() + 1;
                } else {
-                  sync_next_expected_num = blk_num + 1;
+                  if (blk_num == sync_next_expected_num) {
+                     ++sync_next_expected_num;
+                  } else if (blk_num < sync_next_expected_num) {
+                     sync_next_expected_num = blk_num + 1;
+                  }
                }
             }
 
@@ -2641,12 +2644,12 @@ namespace eosio {
       block_buffer_factory buff_factory;
       const auto bnum = b->block_num();
       my_impl->connections.for_each_block_connection( [this, &id, &bnum, &b, &buff_factory]( auto& cp ) {
-         fc_dlog( logger, "socket_is_open ${s}, state ${c}, syncing ${ss}, connection ${cid}",
+         fc_dlog( logger, "socket_is_open ${s}, state ${c}, syncing ${ss}, connection - ${cid}",
                   ("s", cp->socket_is_open())("c", connection::state_str(cp->state()))("ss", cp->peer_syncing_from_us.load())("cid", cp->connection_id) );
          if( !cp->current() ) return;
 
          if( !add_peer_block( id, cp->connection_id ) ) {
-            fc_dlog( logger, "not bcast block ${b} to connection ${cid}", ("b", bnum)("cid", cp->connection_id) );
+            fc_dlog( logger, "not bcast block ${b} to connection - ${cid}", ("b", bnum)("cid", cp->connection_id) );
             return;
          }
 
@@ -2711,7 +2714,7 @@ namespace eosio {
          }
 
          send_buffer_type sb = buff_factory.get_send_buffer( trx );
-         fc_dlog( logger, "sending trx: ${id}, to connection ${cid}", ("id", trx->id())("cid", cp->connection_id) );
+         fc_dlog( logger, "sending trx: ${id}, to connection - ${cid}", ("id", trx->id())("cid", cp->connection_id) );
          cp->strand.post( [cp, sb{std::move(sb)}]() {
             cp->enqueue_buffer( sb, no_reason );
          } );
@@ -2856,15 +2859,17 @@ namespace eosio {
    }
 
    void net_plugin_impl::create_session(tcp::socket&& socket, const string listen_address, size_t limit) {
-      uint32_t                  visitors  = 0;
-      uint32_t                  from_addr = 0;
       boost::system::error_code rec;
-      const auto&               paddr_add = socket.remote_endpoint(rec).address();
-      string                    paddr_str;
+      const auto&               rend = socket.remote_endpoint(rec);
       if (rec) {
          fc_ilog(logger, "Unable to get remote endpoint: ${m}", ("m", rec.message()));
       } else {
-         paddr_str        = paddr_add.to_string();
+         uint32_t                  visitors  = 0;
+         uint32_t                  from_addr = 0;
+         const auto&               paddr_add = rend.address();
+         const auto                paddr_port = rend.port();
+         string                    paddr_str  = paddr_add.to_string();
+         string                    paddr_desc = paddr_str + ":" + std::to_string(paddr_port);
          connections.for_each_connection([&visitors, &from_addr, &paddr_str](const connection_ptr& conn) {
             if (conn->socket_is_open()) {
                if (conn->peer_address().empty()) {
@@ -2881,11 +2886,11 @@ namespace eosio {
                visitors < connections.get_max_client_count())) {
             fc_ilog(logger, "Accepted new connection: " + paddr_str);
 
-            connections.any_of_supplied_peers([&listen_address, &paddr_str, &limit](const string& peer_addr) {
+            connections.any_of_supplied_peers([&listen_address, &paddr_str, &paddr_desc, &limit](const string& peer_addr) {
                auto [host, port, type] = split_host_port_type(peer_addr);
                if (host == paddr_str) {
                   if (limit > 0) {
-                     fc_dlog(logger, "Connection inbound to ${la} from ${a} is a configured p2p-peer-address and will not be throttled", ("la", listen_address)("a", paddr_str));
+                     fc_dlog(logger, "Connection inbound to ${la} from ${a} is a configured p2p-peer-address and will not be throttled", ("la", listen_address)("a", paddr_desc));
                   }
                   limit = 0;
                   return true;
@@ -2902,10 +2907,10 @@ namespace eosio {
 
          } else {
             if (from_addr >= max_nodes_per_host) {
-               fc_dlog(logger, "Number of connections (${n}) from ${ra} exceeds limit ${l}",
-                        ("n", from_addr + 1)("ra", paddr_str)("l", max_nodes_per_host));
+               fc_dlog(logger, "Number of connections (${n}) from ${ra} exceeds limit ${l}, closing",
+                        ("n", from_addr + 1)("ra", paddr_desc)("l", max_nodes_per_host));
             } else {
-               fc_dlog(logger, "max_client_count ${m} exceeded", ("m", connections.get_max_client_count()));
+               fc_dlog(logger, "max_client_count ${m} exceeded, closing: ${ra}", ("m", connections.get_max_client_count())("ra", paddr_desc));
             }
             // new_connection never added to connections and start_session not called, lifetime will end
             boost::system::error_code ec;
@@ -3129,7 +3134,6 @@ namespace eosio {
          }
       } else {
          block_sync_bytes_received += message_length;
-         my_impl->sync_master->sync_recv_block(shared_from_this(), blk_id, blk_num, false);
          uint32_t lib_num = my_impl->get_chain_lib_num();
          if( blk_num <= lib_num ) {
             cancel_wait();
@@ -3137,6 +3141,7 @@ namespace eosio {
             pending_message_buffer.advance_read_ptr( message_length );
             return true;
          }
+         my_impl->sync_master->sync_recv_block(shared_from_this(), blk_id, blk_num, false);
       }
 
       auto ds = pending_message_buffer.create_datastream();
@@ -3718,6 +3723,7 @@ namespace eosio {
             close( false ); // do not reconnect after closing
             break;
          case vote_status::unknown_block: // track the failure
+            peer_dlog(this, "vote unknown block #${bn}:${id}..", ("bn", block_header::num_from_id(msg.block_id))("id", msg.block_id.str().substr(8,16)));
             block_status_monitor_.rejected();
             break;
          case vote_status::duplicate: // do nothing
@@ -3784,15 +3790,15 @@ namespace eosio {
          } catch( const invalid_qc_claim &ex) {
             exception = true;
             close_mode = sync_manager::closing_mode::immediately;
-            fc_wlog( logger, "invalid QC claim exception, connection ${cid}: #${n} ${id}...: ${m}",
+            fc_wlog( logger, "invalid QC claim exception, connection - ${cid}: #${n} ${id}...: ${m}",
                      ("cid", cid)("n", ptr->block_num())("id", id.str().substr(8,16))("m",ex.to_string()));
          } catch( const fc::exception& ex ) {
             exception = true;
-            fc_ilog( logger, "bad block exception connection ${cid}: #${n} ${id}...: ${m}",
+            fc_ilog( logger, "bad block exception connection - ${cid}: #${n} ${id}...: ${m}",
                      ("cid", cid)("n", ptr->block_num())("id", id.str().substr(8,16))("m",ex.to_string()));
          } catch( ... ) {
             exception = true;
-            fc_wlog( logger, "bad block connection ${cid}: #${n} ${id}...: unknown exception",
+            fc_wlog( logger, "bad block connection - ${cid}: #${n} ${id}...: unknown exception",
                      ("cid", cid)("n", ptr->block_num())("id", id.str().substr(8,16)));
          }
          if( exception ) {
@@ -3808,7 +3814,7 @@ namespace eosio {
 
          if( block_num != 0 ) {
             assert(obt);
-            fc_dlog( logger, "validated block header, broadcasting immediately, connection ${cid}, blk num = ${num}, id = ${id}",
+            fc_dlog( logger, "validated block header, broadcasting immediately, connection - ${cid}, blk num = ${num}, id = ${id}",
                      ("cid", cid)("num", block_num)("id", obt->id()) );
             my_impl->dispatcher.add_peer_block( obt->id(), cid ); // no need to send back to sender
             my_impl->dispatcher.bcast_block( obt->block(), obt->id() );
@@ -3835,7 +3841,7 @@ namespace eosio {
 
       uint32_t lib = cc.last_irreversible_block_num();
       try {
-         if( blk_num <= lib || cc.block_exists(blk_id) ) {
+         if( blk_num <= lib || cc.validated_block_exists(blk_id) ) {
             c->strand.post( [sync_master = my_impl->sync_master.get(),
                              &dispatcher = my_impl->dispatcher, c, blk_id, blk_num]() {
                dispatcher.add_peer_block( blk_id, c->connection_id );
@@ -3851,8 +3857,8 @@ namespace eosio {
       }
 
       fc::microseconds age( fc::time_point::now() - block->timestamp);
-      fc_dlog( logger, "received signed_block: #${n} block age in secs = ${age}, connection ${cid}, ${v}, lib #${lib}",
-               ("n", blk_num)("age", age.to_seconds())("cid", c->connection_id)("v", obt ? "pre-validated" : "validation pending")("lib", lib) );
+      fc_dlog( logger, "received signed_block: #${n} block age in secs = ${age}, connection - ${cid}, ${v}, lib #${lib}",
+               ("n", blk_num)("age", age.to_seconds())("cid", c->connection_id)("v", obt ? "header validated" : "header validation pending")("lib", lib) );
 
       go_away_reason reason = no_reason;
       bool accepted = false;
@@ -3860,23 +3866,23 @@ namespace eosio {
          accepted = my_impl->chain_plug->accept_block(block, blk_id, obt);
          my_impl->update_chain_info();
       } catch( const unlinkable_block_exception &ex) {
-         fc_ilog(logger, "unlinkable_block_exception connection ${cid}: #${n} ${id}...: ${m}",
+         fc_ilog(logger, "unlinkable_block_exception connection - ${cid}: #${n} ${id}...: ${m}",
                  ("cid", c->connection_id)("n", blk_num)("id", blk_id.str().substr(8,16))("m",ex.to_string()));
          reason = unlinkable;
       } catch( const block_validate_exception &ex ) {
-         fc_ilog(logger, "block_validate_exception connection ${cid}: #${n} ${id}...: ${m}",
+         fc_ilog(logger, "block_validate_exception connection - ${cid}: #${n} ${id}...: ${m}",
                  ("cid", c->connection_id)("n", blk_num)("id", blk_id.str().substr(8,16))("m",ex.to_string()));
          reason = validation;
       } catch( const assert_exception &ex ) {
-         fc_wlog(logger, "block assert_exception connection ${cid}: #${n} ${id}...: ${m}",
+         fc_wlog(logger, "block assert_exception connection - ${cid}: #${n} ${id}...: ${m}",
                  ("cid", c->connection_id)("n", blk_num)("id", blk_id.str().substr(8,16))("m",ex.to_string()));
          reason = fatal_other;
       } catch( const fc::exception &ex ) {
-         fc_ilog(logger, "bad block exception connection ${cid}: #${n} ${id}...: ${m}",
+         fc_ilog(logger, "bad block exception connection - ${cid}: #${n} ${id}...: ${m}",
                  ("cid", c->connection_id)("n", blk_num)("id", blk_id.str().substr(8,16))("m",ex.to_string()));
          reason = fatal_other;
       } catch( ... ) {
-         fc_wlog(logger, "bad block connection ${cid}: #${n} ${id}...: unknown exception",
+         fc_wlog(logger, "bad block connection - ${cid}: #${n} ${id}...: unknown exception",
                  ("cid", c->connection_id)("n", blk_num)("id", blk_id.str().substr(8,16)));
          reason = fatal_other;
       }
@@ -3989,7 +3995,7 @@ namespace eosio {
       on_active_schedule(chain_plug->chain().active_producers());
    }
 
-   // called from application thread
+   // called from other threads including net threads
    void net_plugin_impl::on_voted_block(const vote_message& msg) {
       fc_dlog(logger, "on voted signal: block #${bn} ${id}.., ${t}, key ${k}..",
                 ("bn", block_header::num_from_id(msg.block_id))("id", msg.block_id.str().substr(8,16))
@@ -4364,6 +4370,7 @@ namespace eosio {
       set_producer_accounts(producer_plug->producer_accounts());
 
       thread_pool.start( thread_pool_size, []( const fc::exception& e ) {
+         elog("Exception in net thread, exiting: ${e}", ("e", e.to_detail_string()));
          app().quit();
       } );
 

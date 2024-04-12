@@ -116,16 +116,24 @@ try:
     def getState(status):
         assert status is not None, "ERROR: getTransactionStatus failed to return any status"
         assert "state" in status, \
-            f"ERROR: getTransactionStatus returned a status object that didn't have a \"state\" field. state: {json.dumps(status, indent=1)}"
+            f"ERROR: getTransactionStatus returned a status object that didn't have a \"state\" field. status: {json.dumps(status, indent=1)}"
         return status["state"]
 
     def getBlockNum(status):
         assert status is not None, "ERROR: getTransactionStatus failed to return any status"
-        assert "head_number" in status, \
-            f"ERROR: getTransactionStatus returned a status object that didn't have a \"head_number\" field. state: {json.dumps(status, indent=1)}"
         if "block_number" in status:
             return status["block_number"]
+        assert "head_number" in status, \
+            f"ERROR: getTransactionStatus returned a status object that didn't have a \"head_number\" field. status: {json.dumps(status, indent=1)}"
         return status["head_number"]
+
+    def getBlockID(status):
+        assert status is not None, "ERROR: getTransactionStatus failed to return any status"
+        if "block_id" in status:
+            return status["block_id"]
+        assert "head_id" in status, \
+            f"ERROR: getTransactionStatus returned a status object that didn't have a \"head_id\" field. status: {json.dumps(status, indent=1)}"
+        return status["head_id"]
 
     transferAmount = 10
     # Does not use transaction retry (not needed)
@@ -178,6 +186,7 @@ try:
 
     if state == irreversibleState:
         Print(f"Transaction became irreversible before it could be found forked out: {json.dumps(retStatus, indent=1)}")
+        testSuccessful = True
         sys.exit(0)
 
     assert state == forkedOutState, \
@@ -196,12 +205,12 @@ try:
     state = getState(retStatus)
 
     # it is possible for another fork switch to cause the trx to be forked out again
-    if state == forkedOutState:
+    if state == forkedOutState or state == localState:
         while True:
             info = prodD.getInfo()
             retStatus = prodD.getTransactionStatus(transId)
             state = getState(retStatus)
-            blockNum = getBlockNum(retStatus)
+            blockNum = getBlockNum(retStatus) + 2 # Add 2 to give time to move from locally applied to in-block
             if (state == inBlockState or state == irreversibleState) or ( info['head_block_producer'] == 'defproducerd' and info['last_irreversible_block_num'] > blockNum ):
                 break
 
@@ -210,18 +219,18 @@ try:
         f"\n\nprod A info: {json.dumps(prodA.getInfo(), indent=1)}\n\nprod D info: {json.dumps(prodD.getInfo(), indent=1)}"
 
     afterForkInBlockState = retStatus
-    afterForkBlockId = retStatus["block_id"]
-    assert afterForkInBlockState["block_number"] > originalInBlockState["block_number"], \
+    afterForkBlockId = getBlockID(retStatus)
+    assert getBlockNum(afterForkInBlockState) > getBlockNum(originalInBlockState), \
         "ERROR: The way the test is designed, the transaction should be added to a block that has a higher number than it was in originally before it was forked out." + \
        f"\n\noriginal in block state: {json.dumps(originalInBlockState, indent=1)}\n\nafter fork in block state: {json.dumps(afterForkInBlockState, indent=1)}"
 
-    assert prodD.waitForBlock(afterForkInBlockState["block_number"], timeout=120, blockType=BlockType.lib), \
+    assert prodD.waitForBlock(getBlockNum(afterForkInBlockState), timeout=120, blockType=BlockType.lib), \
         f"ERROR: Block never finalized.\n\nprod A info: {json.dumps(prodA.getInfo(), indent=1)}\n\nprod C info: {json.dumps(prodD.getInfo(), indent=1)}" + \
         f"\n\nafter fork in block state: {json.dumps(afterForkInBlockState, indent=1)}"
 
     retStatus = prodD.getTransactionStatus(transId)
-    if afterForkBlockId != retStatus["block_id"]: # might have been forked out, if so wait for new block to become LIB
-        assert prodD.waitForBlock(retStatus["block_number"], timeout=120, blockType=BlockType.lib), \
+    if afterForkBlockId != getBlockID(retStatus): # might have been forked out, if so wait for new block to become LIB
+        assert prodD.waitForBlock(getBlockNum(retStatus), timeout=120, blockType=BlockType.lib), \
             f"ERROR: Block never finalized.\n\nprod A info: {json.dumps(prodA.getInfo(), indent=1)}\n\nprod C info: {json.dumps(prodD.getInfo(), indent=1)}" + \
             f"\n\nafter fork in block state: {json.dumps(afterForkInBlockState, indent=1)}"
 

@@ -1,6 +1,6 @@
 #pragma once
 #include <eosio/chain/block_header.hpp>
-#include <eosio/chain/incremental_merkle.hpp>
+#include <eosio/chain/incremental_merkle_legacy.hpp>
 #include <eosio/chain/protocol_feature_manager.hpp>
 #include <eosio/chain/chain_snapshot.hpp>
 #include <future>
@@ -28,17 +28,13 @@ using signer_callback_type = std::function<std::vector<signature_type>(const dig
 
 struct block_header_state_legacy;
 
-// totem for dpos_irreversible_blocknum after hotstuff is activated
-// This value implicitly means that fork_database will prefer hotstuff blocks over dpos blocks
-constexpr uint32_t hs_dpos_irreversible_blocknum = std::numeric_limits<uint32_t>::max();
-
 namespace detail {
    struct block_header_state_legacy_common {
       uint32_t                          block_num = 0;
       uint32_t                          dpos_proposed_irreversible_blocknum = 0;
       uint32_t                          dpos_irreversible_blocknum = 0;
       producer_authority_schedule       active_schedule;
-      incremental_legacy_merkle_tree    blockroot_merkle;
+      incremental_merkle_tree_legacy    blockroot_merkle;
       flat_map<account_name,uint32_t>   producer_to_last_produced;
       flat_map<account_name,uint32_t>   producer_to_last_implied_irb;
       block_signing_authority           valid_block_signing_authority;
@@ -55,6 +51,9 @@ struct pending_block_header_state_legacy : public detail::block_header_state_leg
    block_timestamp_type                 timestamp;
    uint32_t                             active_schedule_version = 0;
    uint16_t                             confirmed = 1;
+   std::optional<qc_claim_t>            qc_claim; // transition to savanna has begun
+
+   bool is_if_transition_block() const { return !!qc_claim;  }
 
    signed_block_header make_block_header( const checksum256_type& transaction_mroot,
                                           const checksum256_type& action_mroot,
@@ -83,7 +82,7 @@ protected:
 /**
  *  @struct block_header_state
  *
- *  Algorithm for producer schedule change (pre-hostuff)
+ *  Algorithm for producer schedule change (pre-savanna)
  *     privileged contract -> set_proposed_producers(producers) ->
  *        global_property_object.proposed_schedule_block_num = current_block_num
  *        global_property_object.proposed_schedule           = producers

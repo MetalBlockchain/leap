@@ -140,6 +140,8 @@ set_property(TEST cluster_launcher_if PROPERTY LABELS nonparallelizable_tests)
 
 add_test(NAME transition_to_if COMMAND tests/transition_to_if.py -v ${UNSHARE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_property(TEST transition_to_if PROPERTY LABELS nonparallelizable_tests)
+add_test(NAME transition_to_if_lr COMMAND tests/transition_to_if.py -v -p 20 ${UNSHARE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_property(TEST transition_to_if_lr PROPERTY LABELS long_running_tests)
 
 add_test(NAME ship_test COMMAND tests/ship_test.py -v --num-clients 10 --num-requests 5000 ${UNSHARE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_property(TEST ship_test PROPERTY LABELS nonparallelizable_tests)
@@ -152,6 +154,8 @@ add_test(NAME ship_streamer_test COMMAND tests/ship_streamer_test.py -v --num-cl
 set_property(TEST ship_streamer_test PROPERTY LABELS long_running_tests)
 add_test(NAME ship_streamer_if_test COMMAND tests/ship_streamer_test.py -v --num-clients 10 --activate-if ${UNSHARE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_property(TEST ship_streamer_if_test PROPERTY LABELS long_running_tests)
+add_test(NAME ship_streamer_if_fetch_finality_data_test COMMAND tests/ship_streamer_test.py -v --num-clients 10 --activate-if --finality-data-history ${UNSHARE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_property(TEST ship_streamer_if_fetch_finality_data_test PROPERTY LABELS long_running_tests)
 
 add_test(NAME p2p_dawn515_test COMMAND tests/p2p_tests/dawn_515/test.sh WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_property(TEST p2p_dawn515_test PROPERTY LABELS nonparallelizable_tests)
@@ -219,7 +223,6 @@ add_test(NAME keosd_auto_launch_test COMMAND tests/keosd_auto_launch_test.py WOR
 set_property(TEST keosd_auto_launch_test PROPERTY LABELS nonparallelizable_tests)
 add_test(NAME nodeos_snapshot_diff_test COMMAND tests/nodeos_snapshot_diff_test.py -v ${UNSHARE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_property(TEST nodeos_snapshot_diff_test PROPERTY LABELS nonparallelizable_tests)
-# requires https://github.com/AntelopeIO/leap/issues/1558
 add_test(NAME nodeos_snapshot_diff_if_test COMMAND tests/nodeos_snapshot_diff_test.py -v --activate-if ${UNSHARE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_property(TEST nodeos_snapshot_diff_if_test PROPERTY LABELS nonparallelizable_tests)
 add_test(NAME nodeos_snapshot_forked_test COMMAND tests/nodeos_snapshot_forked_test.py -v ${UNSHARE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
@@ -287,15 +290,13 @@ set_property(TEST nodeos_under_min_avail_ram_if_lr_test PROPERTY LABELS long_run
 
 add_test(NAME nodeos_irreversible_mode_lr_test COMMAND tests/nodeos_irreversible_mode_test.py -v ${UNSHARE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_property(TEST nodeos_irreversible_mode_lr_test PROPERTY LABELS long_running_tests)
-# requires https://github.com/AntelopeIO/leap/issues/2286
-#add_test(NAME nodeos_irreversible_mode_if_lr_test COMMAND tests/nodeos_irreversible_mode_test.py -v --activate-if ${UNSHARE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-#set_property(TEST nodeos_irreversible_mode_if_lr_test PROPERTY LABELS long_running_tests)
+add_test(NAME nodeos_irreversible_mode_if_lr_test COMMAND tests/nodeos_irreversible_mode_test.py -v --activate-if ${UNSHARE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_property(TEST nodeos_irreversible_mode_if_lr_test PROPERTY LABELS long_running_tests)
 
 add_test(NAME nodeos_read_terminate_at_block_lr_test COMMAND tests/nodeos_read_terminate_at_block_test.py -v ${UNSHARE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_property(TEST nodeos_read_terminate_at_block_lr_test PROPERTY LABELS long_running_tests)
-# requires https://github.com/AntelopeIO/leap/issues/2057 because running in irreversible mode currently switches different than non-irreversible mode
-#add_test(NAME nodeos_read_terminate_at_block_if_lr_test COMMAND tests/nodeos_read_terminate_at_block_test.py --activate-if -v ${UNSHARE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
-#set_property(TEST nodeos_read_terminate_at_block_if_lr_test PROPERTY LABELS long_running_tests)
+add_test(NAME nodeos_read_terminate_at_block_if_lr_test COMMAND tests/nodeos_read_terminate_at_block_test.py --activate-if -v ${UNSHARE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+set_property(TEST nodeos_read_terminate_at_block_if_lr_test PROPERTY LABELS long_running_tests)
 
 add_test(NAME liveness_test COMMAND tests/liveness_test.py -v ${UNSHARE} WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 set_property(TEST liveness_test PROPERTY LABELS nonparallelizable_tests)
