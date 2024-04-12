@@ -31,7 +31,8 @@ block_state::block_state(const block_header_state&                bhs,
                          const std::optional<valid_t>&            valid,
                          const std::optional<quorum_certificate>& qc,
                          const signer_callback_type&              signer,
-                         const block_signing_authority&           valid_block_signing_authority)
+                         const block_signing_authority&           valid_block_signing_authority,
+                         const digest_type&                       action_mroot)
    : block_header_state(bhs)
    , block(std::make_shared<signed_block>(signed_block_header{bhs.header}))
    , strong_digest(compute_finality_digest())
@@ -40,6 +41,7 @@ block_state::block_state(const block_header_state&                bhs,
    , valid(valid)
    , pub_keys_recovered(true) // called by produce_block so signature recovery of trxs must have been done
    , cached_trxs(std::move(trx_metas))
+   , action_mroot(action_mroot)
 {
    block->transactions = std::move(trx_receipts);
 
@@ -52,44 +54,59 @@ block_state::block_state(const block_header_state&                bhs,
 }
 
 // Used for transition from dpos to Savanna.
-block_state::block_state(const block_state_legacy& bsp, const digest_type& action_mroot_svnn) {
-   block_header_state::block_id = bsp.id();
-   header = bsp.header;
-   core = finality_core::create_core_for_genesis_block(bsp.block_num()); // [if todo] instant transition is not acceptable
-   activated_protocol_features = bsp.activated_protocol_features;
+block_state_ptr block_state::create_if_genesis_block(const block_state_legacy& bsp) {
+   assert(bsp.action_mroot_savanna);
 
-   // built leaf_node and validation_tree
+   auto result_ptr = std::make_shared<block_state>();
+   auto &result = *result_ptr;
+
+   // set block_header_state data ----
+   result.block_id = bsp.id();
+   result.header = bsp.header;
+   result.activated_protocol_features = bsp.activated_protocol_features;
+   result.core = finality_core::create_core_for_genesis_block(bsp.block_num());
+
+   assert(bsp.block->contains_header_extension(instant_finality_extension::extension_id())); // required by transition mechanism
+   instant_finality_extension if_ext = bsp.block->extract_header_extension<instant_finality_extension>();
+   assert(if_ext.new_finalizer_policy); // required by transition mechanism
+   result.active_finalizer_policy = std::make_shared<finalizer_policy>(*if_ext.new_finalizer_policy);
+   result.active_proposer_policy = std::make_shared<proposer_policy>();
+   result.active_proposer_policy->active_time = bsp.timestamp();
+   result.active_proposer_policy->proposer_schedule = bsp.active_schedule;
+   result.proposer_policies = {};  // none pending at IF genesis block
+   result.finalizer_policies = {}; // none pending at IF genesis block
+   result.header_exts = bsp.header_exts;
+
+   // set block_state data ----
+   result.block = bsp.block;
+   result.strong_digest = result.compute_finality_digest(); // all block_header_state data populated in result at this point
+   result.weak_digest = create_weak_digest(result.strong_digest);
+
+   // TODO: https://github.com/AntelopeIO/leap/issues/2057
+   // TODO: Do not aggregate votes on blocks created from block_state_legacy. This can be removed when #2057 complete.
+   result.pending_qc = pending_quorum_certificate{result.active_finalizer_policy->finalizers.size(), result.active_finalizer_policy->threshold, result.active_finalizer_policy->max_weak_sum_before_weak_final()};
+
+   // build leaf_node and validation_tree
    valid_t::finality_leaf_node_t leaf_node {
       .block_num       = bsp.block_num(),
-      .finality_digest = digest_type{},
-      .action_mroot    = action_mroot_svnn
+      .finality_digest = result.strong_digest,
+      .action_mroot    = *bsp.action_mroot_savanna
    };
+   // construct valid structure
    incremental_merkle_tree validation_tree;
    validation_tree.append(fc::sha256::hash(leaf_node));
-
-   // construct valid structure
-   valid = valid_t {
+   result.valid = valid_t {
       .validation_tree   = validation_tree,
       .validation_mroots = { validation_tree.get_root() }
    };
 
-   auto if_ext_id = instant_finality_extension::extension_id();
-   std::optional<block_header_extension> ext = bsp.block->extract_header_extension(if_ext_id);
-   assert(ext); // required by current transition mechanism
-   const auto& if_extension = std::get<instant_finality_extension>(*ext);
-   assert(if_extension.new_finalizer_policy); // required by current transition mechanism
-   active_finalizer_policy = std::make_shared<finalizer_policy>(*if_extension.new_finalizer_policy);
-   // TODO: https://github.com/AntelopeIO/leap/issues/2057
-   // TODO: Do not aggregate votes on blocks created from block_state_legacy. This can be removed when #2057 complete.
-   pending_qc = pending_quorum_certificate{active_finalizer_policy->finalizers.size(), active_finalizer_policy->threshold, active_finalizer_policy->max_weak_sum_before_weak_final()};
-   active_proposer_policy = std::make_shared<proposer_policy>();
-   active_proposer_policy->active_time = bsp.timestamp();
-   active_proposer_policy->proposer_schedule = bsp.active_schedule;
-   header_exts = bsp.header_exts;
-   block = bsp.block;
-   validated = bsp.is_valid();
-   pub_keys_recovered = bsp._pub_keys_recovered;
-   cached_trxs = bsp._cached_trxs;
+   result.validated.store(bsp.is_valid());
+   result.pub_keys_recovered = bsp._pub_keys_recovered;
+   result.cached_trxs = bsp._cached_trxs;
+   result.action_mroot = *bsp.action_mroot_savanna;
+   result.base_digest = {}; // calculated on demand in get_finality_data()
+
+   return result_ptr;
 }
 
 block_state::block_state(snapshot_detail::snapshot_block_state_v7&& sbs)
@@ -147,6 +164,19 @@ vote_status block_state::aggregate_vote(const vote_message& vote) {
    }
 }
 
+bool block_state::has_voted(const bls_public_key& key) const {
+   const auto& finalizers = active_finalizer_policy->finalizers;
+   auto it = std::find_if(finalizers.begin(),
+                          finalizers.end(),
+                          [&](const auto& finalizer) { return finalizer.public_key == key; });
+
+   if (it != finalizers.end()) {
+      auto index = std::distance(finalizers.begin(), it);
+      return pending_qc.has_voted(index);
+   }
+   return false;
+}
+
 // Called from net threads
 void block_state::verify_qc(const valid_quorum_certificate& qc) const {
    const auto& finalizers = active_finalizer_policy->finalizers;
@@ -181,21 +211,24 @@ void block_state::verify_qc(const valid_quorum_certificate& qc) const {
                   ("s", strong_weights)("w", weak_weights)("t", active_finalizer_policy->threshold) );
    }
 
-   std::vector<bls_public_key> pubkeys;
+   // no reason to use bls_public_key wrapper
+   std::vector<bls12_381::g1> pubkeys;
+   pubkeys.reserve(2);
    std::vector<std::vector<uint8_t>> digests;
+   digests.reserve(2);
 
    // utility to aggregate public keys for verification
-   auto aggregate_pubkeys = [&](const auto& votes_bitset) -> bls_public_key {
+   auto aggregate_pubkeys = [&](const auto& votes_bitset) -> bls12_381::g1 {
       const auto n = std::min(num_finalizers, votes_bitset.size());
-      std::vector<bls_public_key> pubkeys_to_aggregate;
+      std::vector<bls12_381::g1> pubkeys_to_aggregate;
       pubkeys_to_aggregate.reserve(n);
       for(auto i = 0u; i < n; ++i) {
          if (votes_bitset[i]) { // ith finalizer voted
-            pubkeys_to_aggregate.emplace_back(finalizers[i].public_key);
+            pubkeys_to_aggregate.emplace_back(finalizers[i].public_key.jacobian_montgomery_le());
          }
       }
 
-      return fc::crypto::blslib::aggregate(pubkeys_to_aggregate);
+      return bls12_381::aggregate_public_keys(pubkeys_to_aggregate);
    };
 
    // aggregate public keys and digests for strong and weak votes
@@ -210,38 +243,11 @@ void block_state::verify_qc(const valid_quorum_certificate& qc) const {
    }
 
    // validate aggregated signature
-   EOS_ASSERT( fc::crypto::blslib::aggregate_verify( pubkeys, digests, qc._sig ),
+   EOS_ASSERT( bls12_381::aggregate_verify(pubkeys, digests, qc._sig.jacobian_montgomery_le()),
                invalid_qc_claim, "signature validation failed" );
 }
 
-std::optional<quorum_certificate> block_state::get_best_qc() const {
-   // if pending_qc does not have a valid QC, consider valid_qc only
-   if( !pending_qc.is_quorum_met() ) {
-      if( valid_qc ) {
-         return quorum_certificate{ block_num(), *valid_qc };
-      } else {
-         return std::nullopt;
-      }
-   }
-
-   // extract valid QC from pending_qc
-   valid_quorum_certificate valid_qc_from_pending = pending_qc.to_valid_quorum_certificate();
-
-   // if valid_qc does not have value, consider valid_qc_from_pending only
-   if( !valid_qc ) {
-      return quorum_certificate{ block_num(), valid_qc_from_pending };
-   }
-
-   // Both valid_qc and valid_qc_from_pending have value. Compare them and select a better one.
-   // Strong beats weak. Tie break by valid_qc.
-   const auto& best_qc =
-      valid_qc->is_strong() == valid_qc_from_pending.is_strong() ?
-      *valid_qc : // tie broke by valid_qc
-      valid_qc->is_strong() ? *valid_qc : valid_qc_from_pending; // strong beats weak
-   return quorum_certificate{ block_num(), best_qc };
-}
-
-valid_t block_state::new_valid(const block_header_state& next_bhs, const digest_type& action_mroot) const {
+valid_t block_state::new_valid(const block_header_state& next_bhs, const digest_type& action_mroot, const digest_type& strong_digest) const {
    assert(valid);
    assert(next_bhs.core.last_final_block_num() >= core.last_final_block_num());
 
@@ -256,7 +262,7 @@ valid_t block_state::new_valid(const block_header_state& next_bhs, const digest_
    // construct block's finality leaf node.
    valid_t::finality_leaf_node_t leaf_node{
       .block_num       = next_bhs.block_num(),
-      .finality_digest = next_bhs.compute_finality_digest(),
+      .finality_digest = strong_digest,
       .action_mroot    = action_mroot
    };
    auto leaf_node_digest = fc::sha256::hash(leaf_node);
@@ -295,6 +301,18 @@ digest_type block_state::get_finality_mroot_claim(const qc_claim_t& qc_claim) co
    }
 
    return get_validation_mroot(next_core_metadata.final_on_strong_qc_block_num);
+}
+
+finality_data_t block_state::get_finality_data() {
+   if (!base_digest) {
+      base_digest = compute_base_digest(); // cache it
+   }
+   return {
+      // other fields take the default values set by finality_data_t definition
+      .active_finalizer_policy_generation = active_finalizer_policy->generation,
+      .action_mroot = action_mroot,
+      .base_digest  = *base_digest
+   };
 }
 
 void inject_additional_signatures( signed_block& b, const std::vector<signature_type>& additional_signatures)
