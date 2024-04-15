@@ -176,7 +176,9 @@ endif()
 
 # leap includes a bundled BoringSSL which conflicts with OpenSSL. Make sure any other bundled libraries (such as boost)
 # do not attempt to use an external OpenSSL in any manner
-set(CMAKE_DISABLE_FIND_PACKAGE_OpenSSL On)
+if (NOT FC_USE_OPENSSL)
+  set(CMAKE_DISABLE_FIND_PACKAGE_OpenSSL On)
+endif()
 
 # many tests require handling of signals themselves and even when they don't we'd like for them to generate a core dump, this
 # is effectively --catch_system_errors=no broadly across all tests
