@@ -1,7 +1,14 @@
 add_subdirectory( secp256k1 )
 add_subdirectory( libraries/bn256/src )
 add_subdirectory( libraries/bls12-381 )
-add_subdirectory( libraries/boringssl )
+
+if (FC_USE_OPENSSL)
+  find_package(OpenSSL REQUIRED)
+  set(LIBSSL OpenSSL::SSL OpenSSL::Crypto)
+else()
+  add_subdirectory( libraries/boringssl )
+  set(LIBSSL boringssl)
+endif()
 
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE)
@@ -104,7 +111,7 @@ if(APPLE)
 endif()
 target_link_libraries( fc PUBLIC Boost::date_time Boost::chrono Boost::iostreams Boost::interprocess Boost::multi_index Boost::dll
                                  Boost::multiprecision Boost::beast Boost::asio Boost::thread Boost::unit_test_framework Threads::Threads
-                                 boringssl ZLIB::ZLIB ${PLATFORM_SPECIFIC_LIBS} ${CMAKE_DL_LIBS} secp256k1 bls12-381 ${security_framework} ${corefoundation_framework})
+                                 ${LIBSSL} ZLIB::ZLIB ${PLATFORM_SPECIFIC_LIBS} ${CMAKE_DL_LIBS} secp256k1 bls12-381 ${security_framework} ${corefoundation_framework})
 
 add_subdirectory( test )
 
