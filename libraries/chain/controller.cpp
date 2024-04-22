@@ -3228,9 +3228,9 @@ struct controller_impl {
 
    signed_block_ptr pending_block() {
       EOS_ASSERT( pending, block_validate_exception, "no pending block" );
-      auto& cb = std::get<completed_block>(pending->_block_stage);
       EOS_ASSERT( std::holds_alternative<completed_block>(pending->_block_stage), block_validate_exception,
                      "pending block is not completed" );
+      auto& cb = std::get<completed_block>(pending->_block_stage);
       return block_handle{cb.bsp}.block();
    }
 
