@@ -3226,6 +3226,11 @@ struct controller_impl {
       pending->push();
    }
 
+   signed_block_ptr pending_block() {
+      auto& cb = std::get<completed_block>(pending->_block_stage);
+      return block_handle{cb.bsp}.block();
+   }
+
    void set_proposed_finalizers(finalizer_policy&& fin_pol) {
       assert(pending); // has to exist and be building_block since called from host function
       auto& bb = std::get<building_block>(pending->_block_stage);
@@ -4866,6 +4871,10 @@ void controller::assemble_and_complete_block( block_report& br, const signer_cal
 void controller::commit_block(block_report& br) {
    validate_db_available_size();
    my->commit_block(br, block_status::incomplete);
+}
+
+signed_block_ptr controller::pending_block() const {
+   return my->pending_block();
 }
 
 void controller::maybe_switch_forks(const forked_callback_t& cb, const trx_meta_cache_lookup& trx_lookup) {
