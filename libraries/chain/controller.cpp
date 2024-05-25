@@ -1002,6 +1002,8 @@ struct controller_impl {
                }
             },
             [](const block_state_ptr&) {
+               elog("replace_producer_keys not implemented for instant-finality");
+               EOS_ASSERT(false, producer_exception, "replace_producer_keys not implemented for instant-finality");
                // TODO IF: add instant-finality implementation, will need to replace finalizers as well
             }
          });
