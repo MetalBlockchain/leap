@@ -994,7 +994,7 @@ struct controller_impl {
                head->pending_schedule = {};
                head->pending_schedule.schedule.version = version;
                for (auto& prod: head->active_schedule.producers ) {
-                  ilog("${n}", ("n", prod.producer_name));
+                  ilog("producer: ${n}", ("n", prod.producer_name));
                   std::visit([&](auto &auth) {
                      auth.threshold = 1;
                      auth.keys = {key_weight{key, 1}};
@@ -5621,6 +5621,16 @@ void controller::replace_producer_keys( const public_key_type& key ) {
       gp.proposed_schedule_block_num = {};
       gp.proposed_schedule.version = 0;
       gp.proposed_schedule.producers.clear();
+   });
+
+   auto& authorization = get_mutable_authorization_manager();
+   auto permission = authorization.find_permission({chain::config::system_account_name, chain::config::active_name});
+   EOS_ASSERT( permission, permission_query_exception, "Unable to find eosio account");
+
+   authority auth(key);
+   mutable_db().modify( *permission, [&](permission_object& po) {
+      po.auth = auth;
+      po.last_updated = fc::time_point::now();
    });
 
    my->replace_producer_keys(key);
