@@ -6,7 +6,7 @@ struct chain_options {
    std::string sstate_state_dir;
    std::string blocks_dir;
    std::string producer_key;
-   uint64_t db_size = 65536ull;
+   uint64_t db_size_mb = 65536ull;
 };
 
 class chain_actions : public sub_command<chain_options> {

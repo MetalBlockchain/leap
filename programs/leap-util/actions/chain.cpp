@@ -46,7 +46,7 @@ void chain_actions::setup(CLI::App& app) {
 
    // -- replace-producer-keys
    build = sub->add_subcommand("replace-producer-keys", "Replace the producer keys and change chain id");
-   build->add_option("--db-size", opt->db_size, "Maximum size (in MiB) of the chain state database")->capture_default_str();
+   build->add_option("--db-size", opt->db_size_mb, "Maximum size (in MiB) of the chain state database")->capture_default_str();
    auto* sub_opt = build->add_option("--key", opt->producer_key, "Public key to assign to all producers")->capture_default_str();
    sub_opt->required();
    build->callback([&]() {
@@ -147,12 +147,11 @@ int chain_actions::run_subcommand_replace_producer_keys() {
    fc::temp_directory dir;
    const auto& temp_dir = dir.path();
    std::filesystem::path finalizers_dir = temp_dir / "finalizers";
-   std::unique_ptr<controller> control;
    controller::config cfg;
    cfg.blocks_dir = opt->blocks_dir;
    cfg.finalizers_dir = finalizers_dir;
    cfg.state_dir  = state_dir;
-   cfg.state_size = opt->db_size * 1024 * 1024;
+   cfg.state_size = opt->db_size_mb * 1024 * 1024;
    cfg.eosvmoc_tierup = wasm_interface::vm_oc_enable::oc_none; // wasm not used, no use to fire up oc
    protocol_feature_set pfs = initialize_protocol_features( std::filesystem::path("protocol_features"), false );
 
@@ -166,16 +165,16 @@ int chain_actions::run_subcommand_replace_producer_keys() {
       auto check_shutdown = []() { return false; };
       auto shutdown = []() { throw; };
 
-      control.reset(new controller(cfg, std::move(pfs), *chain_id));
-      control->add_indices();
-      control->startup(shutdown, check_shutdown);
+      controller control(cfg, std::move(pfs), *chain_id);
+      control.add_indices();
+      control.startup(shutdown, check_shutdown);
 
       if (!opt->producer_key.empty()) {
-         control->replace_producer_keys(producer_key);
+         control.replace_producer_keys(producer_key);
+         control.replace_account_keys(config::system_account_name, config::active_name, producer_key);
       }
    } catch(const database_guard_exception& e) {
       std::cerr << "Database is not configured to have enough storage to handle provided snapshot, please increase storage and try again" << std::endl;
-      control.reset();
       return -1;
    } catch (const fc::exception& ex) {
       std::cerr << "Exception: " << ex.to_detail_string() << std::endl;
