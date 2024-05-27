@@ -5625,16 +5625,6 @@ void controller::replace_producer_keys( const public_key_type& key ) {
       gp.proposed_schedule.producers.clear();
    });
 
-   auto& authorization = get_mutable_authorization_manager();
-   auto permission = authorization.find_permission({chain::config::system_account_name, chain::config::active_name});
-   EOS_ASSERT( permission, permission_query_exception, "Unable to find eosio account");
-
-   authority auth(key);
-   mutable_db().modify( *permission, [&](permission_object& po) {
-      po.auth = auth;
-      po.last_updated = fc::time_point::now();
-   });
-
    my->replace_producer_keys(key);
 }
 
@@ -5646,6 +5636,7 @@ void controller::replace_account_keys( name account, name permission, const publ
    int64_t old_size = (int64_t)(chain::config::billable_size_v<permission_object> + perm->auth.get_billable_size());
    mutable_db().modify(*perm, [&](auto& p) {
       p.auth = authority(key);
+      p.last_updated = fc::time_point::now();
    });
    int64_t new_size = (int64_t)(chain::config::billable_size_v<permission_object> + perm->auth.get_billable_size());
    rlm.add_pending_ram_usage(account, new_size - old_size, false); // false for doing dm logging
