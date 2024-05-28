@@ -994,7 +994,7 @@ struct controller_impl {
                head->pending_schedule = {};
                head->pending_schedule.schedule.version = version;
                for (auto& prod: head->active_schedule.producers ) {
-                  ilog("${n}", ("n", prod.producer_name));
+                  ilog("producer: ${n}", ("n", prod.producer_name));
                   std::visit([&](auto &auth) {
                      auth.threshold = 1;
                      auth.keys = {key_weight{key, 1}};
@@ -1002,6 +1002,8 @@ struct controller_impl {
                }
             },
             [](const block_state_ptr&) {
+               elog("replace_producer_keys not implemented for instant-finality");
+               EOS_ASSERT(false, producer_exception, "replace_producer_keys not implemented for instant-finality");
                // TODO IF: add instant-finality implementation, will need to replace finalizers as well
             }
          });
@@ -5634,6 +5636,7 @@ void controller::replace_account_keys( name account, name permission, const publ
    int64_t old_size = (int64_t)(chain::config::billable_size_v<permission_object> + perm->auth.get_billable_size());
    mutable_db().modify(*perm, [&](auto& p) {
       p.auth = authority(key);
+      p.last_updated = fc::time_point::now();
    });
    int64_t new_size = (int64_t)(chain::config::billable_size_v<permission_object> + perm->auth.get_billable_size());
    rlm.add_pending_ram_usage(account, new_size - old_size, false); // false for doing dm logging
